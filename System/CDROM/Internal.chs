@@ -5,7 +5,7 @@
 #include <linux/cdrom.h>
 #include "cd-discid.h"
 
-module System.CDROM
+module System.CDROM.Internal
        where
 
 import System.Posix.IO
@@ -32,7 +32,6 @@ instance Storable TocHeader where
     poke p (TocHeader start end) = do
         {# set cdrom_tochdr.cdth_trk0 #} p (fromIntegral start)
         {# set cdrom_tochdr.cdth_trk1 #} p (fromIntegral end)
-{# pointer *cdrom_tochdr as TocHeaderPtr -> TocHeader #}
 
 read_toc_header :: CInt
 read_toc_header = {#const CDROMREADTOCHDR#}
