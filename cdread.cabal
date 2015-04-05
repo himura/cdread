@@ -17,6 +17,7 @@ library
     exposed-modules:
         System.CDROM
     build-tools: c2hs
-    c-sources: cbits/cd-discid.c
+    c-sources: cbits/cd-discid.cc
     include-dirs: include
     default-language: Haskell2010
+    extra-libraries: stdc++
