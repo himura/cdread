@@ -9,7 +9,6 @@ module System.CDROM
        where
 
 import System.Posix.IO
--- import Data.Word
 import Foreign
 import Foreign.C
 import System.Posix.Types
