@@ -54,7 +54,7 @@ readTocEntry fd hdr@(TocHeader start end) = do
         alloca $ \diskIdPtr -> do
             last <- c_tocentry (fromIntegral fd) (fromIntegral end) diskIdPtr resultPtr
             diskId <- peek diskIdPtr
-            trackOffset <- mapM (peekByteOff resultPtr) [0..(fromIntegral last)]
+            trackOffset <- peekArray (fromIntegral last) resultPtr
             return (diskId, trackOffset)
   where
     size = end + 1
