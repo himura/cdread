@@ -11,6 +11,7 @@ import System.CDROM.Internal
 data Toc = Toc
     { tocDiscId :: Integer
     , tocAddresses :: [Integer]
+    , tocLengthOfDiscInSec :: Integer
     } deriving (Show, Eq)
 
 withCdromFd :: FilePath -> (Fd -> IO a) -> IO a
@@ -21,5 +22,5 @@ readToc :: FilePath -> IO Toc
 readToc dev =
     withCdromFd dev $ \fd -> do
         hdr <- readTocHeader fd
-        (discid, addresses) <- readTocEntry fd hdr
-        return $ Toc (fromIntegral discid) (map fromIntegral addresses)
+        (discid, addresses, discLen) <- readTocEntry fd hdr
+        return $ Toc (fromIntegral discid) (map fromIntegral addresses) (fromIntegral discLen)

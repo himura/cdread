@@ -42,17 +42,15 @@ readTocHeader fd =
         throwErrnoIfMinus1_ "ioctl" $ c_ioctl (fromIntegral fd) read_toc_header (castPtr ptr)
         peek ptr
 
-withCdromFd :: FilePath -> (Fd -> IO a) -> IO a
-withCdromFd dev inner =
-    bracket (openFd dev ReadOnly Nothing (defaultFileFlags { nonBlock = True })) closeFd inner
-
-readTocEntry :: Fd -> TocHeader -> IO (CUInt, [CUInt])
+readTocEntry :: Fd -> TocHeader -> IO (CUInt, [CUInt], CUInt)
 readTocEntry fd hdr@(TocHeader start end) = do
     allocaArray size $ \resultPtr ->
         alloca $ \diskIdPtr -> do
             last <- c_tocentry (fromIntegral fd) (fromIntegral end) diskIdPtr resultPtr
+            let lastInt = fromIntegral last
             diskId <- peek diskIdPtr
-            trackOffset <- peekArray (fromIntegral last) resultPtr
-            return (diskId, trackOffset)
+            trackOffset <- peekArray lastInt resultPtr
+            lengthOfDiscInSec <- peekElemOff resultPtr lastInt
+            return (diskId, trackOffset, lengthOfDiscInSec)
   where
     size = end + 1
