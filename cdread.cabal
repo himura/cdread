@@ -1,0 +1,22 @@
+name:                cdread
+version:             0.1.0.0
+license-file:        LICENSE
+author:              Takahiro HIMURA
+maintainer:          taka@himura.jp
+category:            System
+build-type:          Simple
+cabal-version:       >=1.10
+
+extra-source-files: cbits, include
+
+library
+    build-depends:
+        base >= 4.7 && < 5
+      , unix
+      , exceptions
+    exposed-modules:
+        System.CDROM
+    build-tools: c2hs
+    c-sources: cbits/cd-discid.c
+    include-dirs: include
+    default-language: Haskell2010
