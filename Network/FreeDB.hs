@@ -73,7 +73,9 @@ freeDBQueryResponseParser = do
         return (genre, discid, title)
     parseMultipleChoices store = do
         (string "." >> return store) <|> (parseEachLine >>= \p -> parseMultipleChoices (p:store))
-    skipSpace1 = Atto.takeWhile1 isSpace
+
+skipSpace1 :: Parser ()
+skipSpace1 = Atto.takeWhile1 isSpace >> return ()
 
 makeFreeDBReadRequest :: FreeDBSetting
                       -> String -- ^ caregory
@@ -82,11 +84,22 @@ makeFreeDBReadRequest :: FreeDBSetting
 makeFreeDBReadRequest setting categ discid =
     makeFreeDBRequest setting $ S8.pack $ "cddb read " ++ categ ++ " " ++ discid
 
--- fetchFreeDB :: FilePath
---             -> FreeDBSetting
---             -> Manager
---             -> IO Response
--- fetchFreeDB dev setting mgr = do
---     qstr <- obtainFreeDBQueryString dev
---     req <- makeFreeDBRequest setting qstr
---     response <- httpLbs req mgr
+freeDBReadResponseParser :: Parser (Int, [(T.Text, T.Text)])
+freeDBReadResponseParser = do
+    code <- decimal <* skipSpace1
+    case code of
+        210 -> do
+            -- consume message text
+            _msg <- Atto.skipWhile (not . isEndOfLine) <* skipSpace
+            entries <- reverse <$> parseCddbLines
+            return (code, entries)
+        _ -> return (code, [])
+  where
+    skipComment = string "#" *> Atto.skipWhile (not . isEndOfLine) <* skipSpace
+    parseCddbLines = do
+        manyTill (many skipComment *> parseEachCddbLine <* many skipComment) (string ".")
+    parseEachCddbLine = do
+        key <- Atto.takeWhile (/= '=')
+        _ <- string "="
+        value <- Atto.takeWhile (not . isEndOfLine) <* skipSpace1
+        return (key, value)
