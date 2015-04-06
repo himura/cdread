@@ -12,11 +12,15 @@ extra-source-files: cbits, include
 library
     build-depends:
         base >= 4.7 && < 5
-      , unix
+      , bytestring
       , exceptions
+      , http-conduit
+      , http-types
+      , unix
     exposed-modules:
         System.CDROM
         System.CDROM.Internal
+        Network.FreeDB
     build-tools: c2hs
     c-sources: cbits/cd-discid.cc
     include-dirs: include
