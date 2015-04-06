@@ -61,7 +61,7 @@ freeDBQueryResponseParser = do
         210 -> do
             -- consume message text: Found exact matches, list follows ...
             _msg <- Atto.skipWhile (not . isEndOfLine) <* skipSpace
-            entries <- reverse <$> parseMultipleChoices []
+            entries <- manyTill parseEachLine (string ".")
             return (code, entries)
         _ -> return (code, [])
 
@@ -71,8 +71,6 @@ freeDBQueryResponseParser = do
         discid <- Atto.takeWhile1 (inClass "0-9A-Fa-f") <* skipSpace1
         title <- Atto.takeWhile1 (not . isEndOfLine) <* skipSpace1
         return (genre, discid, title)
-    parseMultipleChoices store = do
-        (string "." >> return store) <|> (parseEachLine >>= \p -> parseMultipleChoices (p:store))
 
 skipSpace1 :: Parser ()
 skipSpace1 = Atto.takeWhile1 isSpace >> return ()
@@ -91,13 +89,11 @@ freeDBReadResponseParser = do
         210 -> do
             -- consume message text
             _msg <- Atto.skipWhile (not . isEndOfLine) <* skipSpace
-            entries <- reverse <$> parseCddbLines
+            entries <- manyTill (many skipComment *> parseEachCddbLine <* many skipComment) (string ".")
             return (code, entries)
         _ -> return (code, [])
   where
     skipComment = string "#" *> Atto.skipWhile (not . isEndOfLine) <* skipSpace
-    parseCddbLines = do
-        manyTill (many skipComment *> parseEachCddbLine <* many skipComment) (string ".")
     parseEachCddbLine = do
         key <- Atto.takeWhile (/= '=')
         _ <- string "="
