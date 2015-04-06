@@ -12,10 +12,12 @@ extra-source-files: cbits, include
 library
     build-depends:
         base >= 4.7 && < 5
+      , attoparsec
       , bytestring
       , exceptions
       , http-conduit
       , http-types
+      , text
       , unix
     exposed-modules:
         System.CDROM

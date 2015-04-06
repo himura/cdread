@@ -4,9 +4,13 @@
 module Network.FreeDB
        where
 
+import Control.Applicative
+import Data.Attoparsec.Text as Atto
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
+import Data.Char
 import Data.List
+import qualified Data.Text as T
 import Network.HTTP.Conduit
 import qualified Network.HTTP.Types as HT
 import System.CDROM
@@ -46,6 +50,30 @@ makeFreeDBQueryRequest :: FreeDBSetting
                        -> IO Request
 makeFreeDBQueryRequest setting reqStr =
     makeFreeDBRequest setting $ S8.pack $ "cddb query " ++ reqStr
+
+freeDBQueryResponseParser :: Parser (Int, [(T.Text, T.Text, T.Text)])
+freeDBQueryResponseParser = do
+    code <- decimal <* skipSpace1
+    case code of
+        200 -> do
+            entry <- parseEachLine
+            return (code, [entry])
+        210 -> do
+            -- consume message text: Found exact matches, list follows ...
+            _msg <- Atto.skipWhile (not . isEndOfLine) <* skipSpace
+            entries <- reverse <$> parseMultipleChoices []
+            return (code, entries)
+        _ -> return (code, [])
+
+  where
+    parseEachLine = do
+        genre <- Atto.takeTill isHorizontalSpace <* skipSpace1
+        discid <- Atto.takeWhile1 (inClass "0-9A-Fa-f") <* skipSpace1
+        title <- Atto.takeWhile1 (not . isEndOfLine) <* skipSpace1
+        return (genre, discid, title)
+    parseMultipleChoices store = do
+        (string "." >> return store) <|> (parseEachLine >>= \p -> parseMultipleChoices (p:store))
+    skipSpace1 = Atto.takeWhile1 isSpace
 
 makeFreeDBReadRequest :: FreeDBSetting
                       -> String -- ^ caregory
