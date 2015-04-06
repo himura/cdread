@@ -8,13 +8,10 @@
 module System.CDROM.Internal
        where
 
-import System.Posix.IO
 import Foreign
 import Foreign.C
 import System.Posix.Types
 import Control.Applicative
-import Control.Monad
-import Control.Monad.Catch
 
 foreign import ccall "ioctl" c_ioctl :: CInt -> CInt -> Ptr () -> IO CInt
 foreign import ccall "read_tocentry" c_tocentry :: CInt -> CInt -> Ptr CUInt -> Ptr CUInt -> IO CInt
@@ -43,14 +40,13 @@ readTocHeader fd =
         peek ptr
 
 readTocEntry :: Fd -> TocHeader -> IO (CUInt, [CUInt], CUInt)
-readTocEntry fd hdr@(TocHeader start end) = do
+readTocEntry fd (TocHeader _start end) = do
     allocaArray size $ \resultPtr ->
         alloca $ \diskIdPtr -> do
-            last <- c_tocentry (fromIntegral fd) (fromIntegral end) diskIdPtr resultPtr
-            let lastInt = fromIntegral last
+            lastTrack <- fromIntegral <$> c_tocentry (fromIntegral fd) (fromIntegral end) diskIdPtr resultPtr
             diskId <- peek diskIdPtr
-            trackOffset <- peekArray lastInt resultPtr
-            lengthOfDiscInSec <- peekElemOff resultPtr lastInt
+            trackOffset <- peekArray lastTrack resultPtr
+            lengthOfDiscInSec <- peekElemOff resultPtr lastTrack
             return (diskId, trackOffset, lengthOfDiscInSec)
   where
     size = end + 1
