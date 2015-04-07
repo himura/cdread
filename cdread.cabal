@@ -23,6 +23,7 @@ library
         System.CDROM
         System.CDROM.Internal
         Network.FreeDB
+        Network.FreeDB.Utils
     build-tools: c2hs
     c-sources: cbits/cd-discid.cc
     include-dirs: include
@@ -35,9 +36,13 @@ executable cdread
     hs-source-dirs: bin
     build-depends:
         base >= 4.7 && < 5
+      , aeson
+      , bytestring
       , cdread
+      , containers
       , http-conduit
       , text
       , transformers
+      , yaml
     default-language: Haskell2010
     ghc-options: -Wall

@@ -6,13 +6,20 @@ module Main where
 import Control.Applicative
 import Control.Monad
 import Control.Monad.IO.Class
+import Data.Aeson
+import qualified Data.ByteString.Char8 as S8
+import qualified Data.Map as M
+import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import Data.Yaml as Yaml
 import Network.FreeDB
+import Network.FreeDB.Utils
 import Network.HTTP.Conduit
 import System.CDROM
 import System.Console.GetOpt
 import System.Environment
+import Text.Printf
 
 data Options = Options
     { device :: String
@@ -62,16 +69,76 @@ run Options{..} = do
     withManager $ \mgr -> do
         entries <- liftIO $ freeDBQuery freeDBSetting toc mgr
         case entries of
-            [(categ, discid, title)] -> do
-                liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
-                cddb <- liftIO $ freeDBRead freeDBSetting categ discid mgr
-                forM_ cddb $ \(k, v) ->
-                    liftIO . T.putStrLn $ T.concat [k, " = ", v]
+            [(categ, discid, _title)] -> do
+                -- liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
+                cddbAssoc <- liftIO $ freeDBRead freeDBSetting categ discid mgr
+                let cddb = makeCDDB toc cddbAssoc
+                liftIO . S8.putStrLn $ Yaml.encode cddb
+                -- forM_ cddb $ \(k, v) ->
+                --     liftIO . T.putStrLn $ T.concat [k, " = ", v]
             _ -> do
                 liftIO $ putStrLn "Multiple Choices:"
                 forM_ entries $ \(categ, discid, title) -> do
                     liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
 
+data CDDB = CDDB
+    { cddbAlbum :: T.Text
+    , cddbAlbumArtist :: Maybe T.Text
+    , cddbDate :: Maybe T.Text
+    , cddbGenre :: T.Text
+    , cddbDiscID :: T.Text
+    , cddbTrackTotal :: Int
+    , cddbTrack :: [CDDBTrack]
+    } deriving (Eq, Show)
+instance ToJSON CDDB where
+    toJSON CDDB{..} =
+        object [ "ALBUM" .= cddbAlbum
+               , "ALBUM ARTIST" .= cddbAlbumArtist
+               , "DATE" .= cddbDate
+               , "GENRE" .= cddbGenre
+               , "DISCID" .= cddbDiscID
+               , "TRACKTOTAL" .= cddbTrackTotal
+               , "track" .= cddbTrack
+               ]
+
+data CDDBTrack = CDDBTrack
+    { trackNumber :: Int
+    , trackTitle :: T.Text
+    , trackArtist :: Maybe T.Text
+    } deriving (Eq, Show)
+instance ToJSON CDDBTrack where
+    toJSON CDDBTrack{..} =
+        object [ "TRACKNUMBER" .= trackNumber
+               , "TITLE" .= trackTitle
+               , "ARTIST" .= trackArtist
+               ]
+
+makeCDDB :: Toc -> [(T.Text, T.Text)] -> CDDB
+makeCDDB toc entries =
+    CDDB { cddbAlbum = album
+         , cddbAlbumArtist = albumArtist
+         , cddbDate = M.lookup "DYEAR" m
+         , cddbGenre = fromMaybe "Unknown" $ M.lookup "DGENRE" m
+         , cddbDiscID = T.pack $ printf "%x" (tocDiscId toc)
+         , cddbTrackTotal = trackNum
+         , cddbTrack = map makeCDDBTrack [0..(trackNum-1)]
+         }
+  where
+    m = M.fromList entries
+    (album, albumArtist) = case M.lookup "DTITLE" m of
+        Nothing -> ("", Nothing)
+        Just dtitle -> parseTitleAuthor dtitle
+    trackNum = length . tocAddresses $ toc
+
+    makeCDDBTrack index =
+        CDDBTrack { trackNumber = index + 1
+                  , trackTitle = title
+                  , trackArtist = artist
+                  }
+      where
+        (title, artist) = case M.lookup (T.pack $ "TTITLE" ++ show index) m of
+            Nothing -> ("", Nothing)
+            Just ttitle -> parseTitleAuthor ttitle
 
 main :: IO ()
 main = do
