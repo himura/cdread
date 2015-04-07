@@ -29,3 +29,15 @@ library
     default-language: Haskell2010
     extra-libraries: stdc++
     ghc-options: -Wall
+
+executable cdread
+    main-is: cdread.hs
+    hs-source-dirs: bin
+    build-depends:
+        base >= 4.7 && < 5
+      , cdread
+      , http-conduit
+      , text
+      , transformers
+    default-language: Haskell2010
+    ghc-options: -Wall

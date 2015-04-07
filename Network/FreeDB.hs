@@ -44,6 +44,19 @@ freeDBQuery setting toc mgr = do
         Left err -> throwM err
         Right result -> return result
 
+freeDBRead :: FreeDBSetting
+           -> T.Text -- ^ category
+           -> T.Text -- ^ discid
+           -> Manager
+           -> IO [(T.Text, T.Text)]
+freeDBRead setting categ discid mgr = do
+    req <- makeFreeDBReadRequest setting categ discid
+    res <- httpLbs req mgr
+    let msg = T.decodeUtf8 . L.toStrict . responseBody $ res
+    case parseFreeDBReadResponse msg of
+        Left err -> throwM err
+        Right result -> return result
+
 obtainFreeDBQueryString :: Toc -> String
 obtainFreeDBQueryString toc =
     concat . intersperse " " $ (discid : len : addresses) ++ [show (tocLengthOfDiscInSec toc)]
@@ -99,11 +112,11 @@ skipSpace1 :: Parser ()
 skipSpace1 = Atto.takeWhile1 isSpace >> return ()
 
 makeFreeDBReadRequest :: FreeDBSetting
-                      -> String -- ^ caregory
-                      -> String -- ^ discid
+                      -> T.Text -- ^ caregory
+                      -> T.Text -- ^ discid
                       -> IO Request
 makeFreeDBReadRequest setting categ discid =
-    makeFreeDBRequest setting $ S8.pack $ "cddb read " ++ categ ++ " " ++ discid
+    makeFreeDBRequest setting $ T.encodeUtf8 $ T.concat ["cddb read ", categ, " ", discid]
 
 freeDBReadResponseParser :: Parser (Int, Either T.Text [(T.Text, T.Text)])
 freeDBReadResponseParser = do
