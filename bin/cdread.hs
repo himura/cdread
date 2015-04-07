@@ -19,6 +19,7 @@ import Network.HTTP.Conduit
 import System.CDROM
 import System.Console.GetOpt
 import System.Environment
+import System.IO
 import Text.Printf
 
 data Options = Options
@@ -63,8 +64,8 @@ usageMessage :: String -> [OptDescr (opt -> IO opt)] -> String
 usageMessage programName = usageInfo
     (programName ++ " [OPTION...] <command> [<args>]\n\nThe " ++ programName ++ "\nThe global options are:")
 
-run :: Options -> IO ()
-run Options{..} = do
+run :: Options -> [String] -> IO ()
+run Options{..} ("cddb":_) = do
     toc <- readToc device
     withManager $ \mgr -> do
         entries <- liftIO $ freeDBQuery freeDBSetting toc mgr
@@ -81,6 +82,29 @@ run Options{..} = do
                 forM_ entries $ \(categ, discid, title) -> do
                     liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
 
+run _ ("generate-tags":file:_) = do
+    mcddb <- Yaml.decodeFile file
+    case mcddb of
+        Just CDDB{..} ->
+            forM_ cddbTrack $ \CDDBTrack{..} -> do
+                withFile (printf "%02d.tag" trackNumber) WriteMode $ \fp -> do
+                    put fp "ALBUM" cddbAlbum
+                    mput fp "ALBUM ARTIST" cddbAlbumArtist
+                    mput fp "DATE" cddbDate
+                    put fp "GENRE" cddbGenre
+                    put fp "DISCID" cddbDiscID
+                    put fp "TRACKTOTAL" (T.pack . show $ cddbTrackTotal)
+                    put fp "TRACKNUMBER" (T.pack . show $ trackNumber)
+                    put fp "TITLE" trackTitle
+                    mput fp "TRACKARTIST" trackArtist
+        Nothing ->
+            return () -- error
+  where
+    put fp key val = T.hPutStrLn fp $ T.concat [key , "=", val]
+    mput _fp _key Nothing = return ()
+    mput fp key (Just val) = put fp key val
+run _ _ = return () -- error
+
 data CDDB = CDDB
     { cddbAlbum :: T.Text
     , cddbAlbumArtist :: Maybe T.Text
@@ -90,6 +114,17 @@ data CDDB = CDDB
     , cddbTrackTotal :: Int
     , cddbTrack :: [CDDBTrack]
     } deriving (Eq, Show)
+instance FromJSON CDDB where
+    parseJSON (Object o) =
+        CDDB
+        <$> o .:  "ALBUM"
+        <*> o .:? "ALBUM ARTIST"
+        <*> o .:? "DATE"
+        <*> o .:  "GENRE"
+        <*> o .:  "DISCID"
+        <*> o .:  "TRACKTOTAL"
+        <*> o .:  "track"
+    parseJSON o = fail $ "CDDB unexpected " ++ show o
 instance ToJSON CDDB where
     toJSON CDDB{..} =
         object [ "ALBUM" .= cddbAlbum
@@ -106,6 +141,13 @@ data CDDBTrack = CDDBTrack
     , trackTitle :: T.Text
     , trackArtist :: Maybe T.Text
     } deriving (Eq, Show)
+instance FromJSON CDDBTrack where
+    parseJSON (Object o) =
+        CDDBTrack
+        <$> o .:  "TRACKNUMBER"
+        <*> o .:  "TITLE"
+        <*> o .:  "ARTIST"
+    parseJSON o = fail $ "CDDBTrack unexpected " ++ show o
 instance ToJSON CDDBTrack where
     toJSON CDDBTrack{..} =
         object [ "TRACKNUMBER" .= trackNumber
@@ -142,8 +184,8 @@ makeCDDB toc entries =
 
 main :: IO ()
 main = do
-    (gopts, _cmds) <- getArgs >>= compilerOpts usage options defaultOptions
-    run gopts
+    (opts, cmds) <- getArgs >>= compilerOpts usage options defaultOptions
+    run opts cmds
   where
     usage errs = do
         pn <- getProgName
