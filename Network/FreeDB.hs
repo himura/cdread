@@ -51,19 +51,21 @@ makeFreeDBQueryRequest :: FreeDBSetting
 makeFreeDBQueryRequest setting reqStr =
     makeFreeDBRequest setting $ S8.pack $ "cddb query " ++ reqStr
 
-freeDBQueryResponseParser :: Parser (Int, [(T.Text, T.Text, T.Text)])
+freeDBQueryResponseParser :: Parser (Int, Either T.Text [(T.Text, T.Text, T.Text)])
 freeDBQueryResponseParser = do
     code <- decimal <* skipSpace1
     case code of
         200 -> do
             entry <- parseEachLine
-            return (code, [entry])
+            return (code, Right [entry])
         210 -> do
             -- consume message text: Found exact matches, list follows ...
             _msg <- Atto.skipWhile (not . isEndOfLine) <* skipSpace
             entries <- manyTill parseEachLine (string ".")
-            return (code, entries)
-        _ -> return (code, [])
+            return (code, Right entries)
+        _ -> do
+            body <- Atto.takeTill (const True)
+            return (code, Left body)
 
   where
     parseEachLine = do
@@ -82,7 +84,7 @@ makeFreeDBReadRequest :: FreeDBSetting
 makeFreeDBReadRequest setting categ discid =
     makeFreeDBRequest setting $ S8.pack $ "cddb read " ++ categ ++ " " ++ discid
 
-freeDBReadResponseParser :: Parser (Int, [(T.Text, T.Text)])
+freeDBReadResponseParser :: Parser (Int, Either T.Text [(T.Text, T.Text)])
 freeDBReadResponseParser = do
     code <- decimal <* skipSpace1
     case code of
@@ -90,8 +92,10 @@ freeDBReadResponseParser = do
             -- consume message text
             _msg <- Atto.skipWhile (not . isEndOfLine) <* skipSpace
             entries <- manyTill (many skipComment *> parseEachCddbLine <* many skipComment) (string ".")
-            return (code, entries)
-        _ -> return (code, [])
+            return (code, Right entries)
+        _ -> do
+            body <- Atto.takeTill (const True)
+            return (code, Left body)
   where
     skipComment = string "#" *> Atto.skipWhile (not . isEndOfLine) <* skipSpace
     parseEachCddbLine = do
@@ -99,3 +103,20 @@ freeDBReadResponseParser = do
         _ <- string "="
         value <- Atto.takeWhile (not . isEndOfLine) <* skipSpace1
         return (key, value)
+
+data FreeDBError
+    = ResponseParseError String T.Text
+    | ResponseStatusError Int T.Text
+
+parseResponse :: Parser (Int, Either T.Text a) ->  T.Text -> Either FreeDBError a
+parseResponse parser res =
+    case parseOnly parser res of
+        Left err -> Left $ ResponseParseError err res
+        Right (code, Left err) -> Left $ ResponseStatusError code err
+        Right (_code, Right result) -> Right result
+
+parseFreeDBQueryResponse :: T.Text -> Either FreeDBError [(T.Text, T.Text, T.Text)]
+parseFreeDBQueryResponse = parseResponse freeDBQueryResponseParser
+
+parseFreeDBReadResponse :: T.Text -> Either FreeDBError [(T.Text, T.Text)]
+parseFreeDBReadResponse = parseResponse freeDBReadResponseParser
