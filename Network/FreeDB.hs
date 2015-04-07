@@ -1,16 +1,22 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+
 
 module Network.FreeDB
        where
 
 import Control.Applicative
+import Control.Monad.Catch
 import Data.Attoparsec.Text as Atto
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
+import qualified Data.ByteString.Lazy as L
 import Data.Char
 import Data.List
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import Data.Typeable (Typeable)
 import Network.HTTP.Conduit
 import qualified Network.HTTP.Types as HT
 import System.CDROM
@@ -22,6 +28,21 @@ data FreeDBSetting = FreeDBSetting
     , fdbUserHostname :: String
     , fdbProxy :: Maybe Proxy
     } deriving (Show, Eq)
+
+data FreeDBError
+    = ResponseParseError String T.Text
+    | ResponseStatusError Int T.Text
+    deriving (Eq, Show, Typeable)
+instance Exception FreeDBError
+
+freeDBQuery :: FreeDBSetting -> Toc -> Manager -> IO [(T.Text, T.Text, T.Text)]
+freeDBQuery setting toc mgr = do
+    req <- makeFreeDBQueryRequest setting $ obtainFreeDBQueryString toc
+    res <- httpLbs req mgr
+    let msg = T.decodeUtf8 . L.toStrict . responseBody $ res
+    case parseFreeDBQueryResponse msg of
+        Left err -> throwM err
+        Right result -> return result
 
 obtainFreeDBQueryString :: Toc -> String
 obtainFreeDBQueryString toc =
@@ -104,11 +125,7 @@ freeDBReadResponseParser = do
         value <- Atto.takeWhile (not . isEndOfLine) <* skipSpace1
         return (key, value)
 
-data FreeDBError
-    = ResponseParseError String T.Text
-    | ResponseStatusError Int T.Text
-
-parseResponse :: Parser (Int, Either T.Text a) ->  T.Text -> Either FreeDBError a
+parseResponse :: Parser (Int, Either T.Text a) -> T.Text -> Either FreeDBError a
 parseResponse parser res =
     case parseOnly parser res of
         Left err -> Left $ ResponseParseError err res
