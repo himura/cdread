@@ -96,7 +96,7 @@ run _ ("generate-tags":file:_) = do
                     put fp "TRACKTOTAL" (T.pack . show $ cddbTrackTotal)
                     put fp "TRACKNUMBER" (T.pack . show $ trackNumber)
                     put fp "TITLE" trackTitle
-                    mput fp "TRACKARTIST" trackArtist
+                    mput fp "ARTIST" trackArtist
         Nothing ->
             return () -- error
   where
