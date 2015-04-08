@@ -4,10 +4,13 @@
 module Main where
 
 import Control.Applicative
+import Control.Lens hiding ((.=))
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Aeson
+import Data.Aeson.Lens
 import qualified Data.ByteString.Char8 as S8
+import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
@@ -82,28 +85,34 @@ run Options{..} ("cddb":_) = do
                 forM_ entries $ \(categ, discid, title) -> do
                     liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
 
-run _ ("generate-tags":file:_) = do
+run _ ("gentags":file:_) = do
     mcddb <- Yaml.decodeFile file
     case mcddb of
-        Just CDDB{..} ->
-            forM_ cddbTrack $ \CDDBTrack{..} -> do
-                withFile (printf "%02d.tag" trackNumber) WriteMode $ \fp -> do
-                    put fp "ALBUM" cddbAlbum
-                    mput fp "ALBUM ARTIST" cddbAlbumArtist
-                    mput fp "DATE" cddbDate
-                    put fp "GENRE" cddbGenre
-                    put fp "DISCID" cddbDiscID
-                    put fp "TRACKTOTAL" (T.pack . show $ cddbTrackTotal)
-                    put fp "TRACKNUMBER" (T.pack . show $ trackNumber)
-                    put fp "TITLE" trackTitle
-                    mput fp "ARTIST" trackArtist
-        Nothing ->
-            return () -- error
-  where
-    put fp key val = T.hPutStrLn fp $ T.concat [key , "=", val]
-    mput _fp _key Nothing = return ()
-    mput fp key (Just val) = put fp key val
+        Just o -> genTags o
+        Nothing -> return () -- error
 run _ _ = return () -- error
+
+genTags :: Value -> IO ()
+genTags o =
+    forM_ (o ^.. key "track" . _Array . traversed) $ \track -> do
+        writeTagFile (track ^? key "TRACKNUMBER" . _Integral) track
+  where
+    commonField = o ^. _Object . to (HashMap.delete "track")
+
+    writeTagFile :: Maybe Int -> Value -> IO ()
+    writeTagFile Nothing track =
+        putStrLn $ "Unknown track number: " ++ show track
+    writeTagFile (Just tracknum) track = do
+        let fields = HashMap.union (track ^. _Object) commonField
+        withFile (printf "%02d.tag" tracknum) WriteMode $ \fp ->
+            forM_ (HashMap.toList fields) $ \(k, vobj) -> do
+                case showValue vobj of
+                    Just v -> T.hPutStrLn fp $ T.concat [k, "=", v]
+                    Nothing -> T.hPutStrLn fp $ T.concat ["# unknown value: ", k, "=", T.pack . show $ vobj]
+    showValue :: Value -> Maybe T.Text
+    showValue (String s) = Just s
+    showValue v@(Number _i) = T.pack . show <$> (v ^? _Integral :: Maybe Int)
+    showValue _ = Nothing
 
 data CDDB = CDDB
     { cddbAlbum :: T.Text
@@ -172,13 +181,13 @@ makeCDDB toc entries =
         Just dtitle -> parseTitleAuthor dtitle
     trackNum = length . tocAddresses $ toc
 
-    makeCDDBTrack index =
-        CDDBTrack { trackNumber = index + 1
+    makeCDDBTrack trackIndex =
+        CDDBTrack { trackNumber = trackIndex + 1
                   , trackTitle = title
                   , trackArtist = artist
                   }
       where
-        (title, artist) = case M.lookup (T.pack $ "TTITLE" ++ show index) m of
+        (title, artist) = case M.lookup (T.pack $ "TTITLE" ++ show trackIndex) m of
             Nothing -> ("", Nothing)
             Just ttitle -> parseTitleAuthor ttitle
 

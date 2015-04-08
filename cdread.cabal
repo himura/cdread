@@ -41,8 +41,11 @@ executable cdread
       , cdread
       , containers
       , http-conduit
+      , lens
+      , lens-aeson
       , text
       , transformers
+      , unordered-containers
       , yaml
     default-language: Haskell2010
     ghc-options: -Wall
