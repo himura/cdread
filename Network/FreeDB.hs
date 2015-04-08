@@ -91,13 +91,10 @@ freeDBQueryResponseParser = do
         200 -> do
             entry <- parseEachLine
             return (code, Right [entry])
-        210 -> do
-            -- consume message text: Found exact matches, list follows ...
-            _msg <- Atto.skipWhile (not . isEndOfLine) <* skipSpace
-            entries <- manyTill parseEachLine (string ".")
-            return (code, Right entries)
+        210 -> discListParser code
+        211 -> discListParser code
         _ -> do
-            body <- Atto.takeTill (const True)
+            body <- Atto.takeWhile (const True)
             return (code, Left body)
 
   where
@@ -106,6 +103,12 @@ freeDBQueryResponseParser = do
         discid <- Atto.takeWhile1 (inClass "0-9A-Fa-f") <* skipSpace1
         title <- Atto.takeWhile1 (not . isEndOfLine) <* skipSpace1
         return (genre, discid, title)
+    discListParser code = do
+        -- consume message text: Found exact matches, list follows ...
+        _msg <- Atto.skipWhile (not . isEndOfLine) <* skipSpace
+        entries <- manyTill parseEachLine (string ".")
+        return (code, Right entries)
+
 
 skipSpace1 :: Parser ()
 skipSpace1 = Atto.takeWhile1 isSpace >> return ()
@@ -127,7 +130,7 @@ freeDBReadResponseParser = do
             entries <- manyTill (many skipComment *> parseEachCddbLine <* many skipComment) (string ".")
             return (code, Right entries)
         _ -> do
-            body <- Atto.takeTill (const True)
+            body <- Atto.takeWhile (const True)
             return (code, Left body)
   where
     skipComment = string "#" *> Atto.skipWhile (not . isEndOfLine) <* skipSpace
