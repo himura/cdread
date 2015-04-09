@@ -13,63 +13,98 @@ import qualified Data.ByteString.Char8 as S8
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as M
 import Data.Maybe
+import Data.Monoid
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Yaml as Yaml
 import Network.FreeDB
 import Network.FreeDB.Utils
 import Network.HTTP.Conduit
+import qualified Network.URI as URI
+import qualified Options.Applicative as Opts
 import System.CDROM
-import System.Console.GetOpt
 import System.Environment
 import System.IO
 import Text.Printf
 
-data Options = Options
+data CDDBOptions = CDDBOptions
     { device :: String
-    , freeDBSetting :: FreeDBSetting
+    , freeDBUrl :: String
+    , freeDBUser :: String
+    , freeDBUserHostname :: String
+    , proxyUrl :: Maybe String
     } deriving Show
 
-defaultOptions :: Options
-defaultOptions =
-    Options
-    { device = "/dev/cdrom"
-    , freeDBSetting = defaultFreeDBSetting
-    }
+defaultCDDBOptions :: IO CDDBOptions
+defaultCDDBOptions = do
+    proxy <- getProxyEnv
+    return $
+        CDDBOptions
+        { device = "/dev/cdrom"
+        , freeDBUrl = "http://freedbtest.dyndns.org/~cddb/cddb.cgi"
+        , freeDBUser = "user@example.jp"
+        , freeDBUserHostname = "example.jp"
+        , proxyUrl = proxy
+        }
 
-defaultFreeDBSetting :: FreeDBSetting
-defaultFreeDBSetting =
-    FreeDBSetting
-    { fdbUrl = "http://freedbtest.dyndns.org/~cddb/cddb.cgi"
-    , fdbUserName = "user@example.jp"
-    , fdbUserHostname = "example.jp"
-    , fdbProxy = Nothing
-    }
+getProxyEnv :: IO (Maybe String)
+getProxyEnv = do
+    env <- M.fromList <$> getEnvironment
+    return $
+        M.lookup "https_proxy" env <|>
+        M.lookup "HTTPS_PROXY" env <|>
+        M.lookup "http_proxy" env
 
-options :: [OptDescr (Options -> IO Options)]
-options =
-    [ Option "d" ["device"]
-          (ReqArg (\dev opts -> return $ opts { device = dev }) "device")
-          ""
-    ]
+parseProxy :: String -> Maybe Proxy
+parseProxy uri = Proxy <$> (S8.pack . URI.uriRegName <$> u) <*> (parsePort . URI.uriPort <$> u)
+  where
+    u = URI.parseURI uri >>= URI.uriAuthority
+    parsePort :: String -> Int
+    parsePort []       = 8080
+    parsePort (':':xs) = read xs
+    parsePort xs       = error $ "port number parse failed " ++ xs
 
-compilerOpts :: ([String] -> IO (t, [String])) -- ^ Error handler
-             -> [OptDescr (t -> IO t)] -- ^ Option descriptions
-             -> t -- ^ Default value of options
-             -> [String] -- ^ argv
-             -> IO (t, [String])
-compilerOpts errHndl opts defaultOpts argv =
-    case getOpt RequireOrder opts argv of
-        (o,n,[]  ) -> (,) <$> foldl (>>=) (return defaultOpts) o <*> return n
-        (_,_,errs) -> errHndl errs
+cddbOptions :: CDDBOptions -- ^ default options
+        -> Opts.Parser CDDBOptions
+cddbOptions CDDBOptions{..} = CDDBOptions
+    <$> Opts.strOption
+        (  Opts.long "device"
+        <> Opts.short 'd'
+        <> Opts.metavar "DEVICE"
+        <> Opts.help "CD-ROM device"
+        <> Opts.value device )
+    <*> Opts.strOption
+        (  Opts.long "freedb"
+        <> Opts.metavar "URL"
+        <> Opts.help "FreeDB URL"
+        <> Opts.value freeDBUrl )
+    <*> Opts.strOption
+        (  Opts.long "freedb-user"
+        <> Opts.metavar "EMAIL"
+        <> Opts.help "FreeDB User name"
+        <> Opts.value freeDBUser )
+    <*> Opts.strOption
+        (  Opts.long "freedb-user-hostname"
+        <> Opts.metavar "HOSTNAME"
+        <> Opts.help "FreeDB User hostname"
+        <> Opts.value freeDBUserHostname )
+    <*> strOptional proxyUrl
+        (  Opts.long "proxy"
+        <> Opts.metavar "URI"
+        <> Opts.help "proxy uri (example http://proxy.example.com:8080/)" )
+  where
+    strOptional def flags = Just <$> Opts.strOption flags <|> pure def
 
-usageMessage :: String -> [OptDescr (opt -> IO opt)] -> String
-usageMessage programName = usageInfo
-    (programName ++ " [OPTION...] <command> [<args>]\n\nThe " ++ programName ++ "\nThe global options are:")
+subcommand :: CDDBOptions -> Opts.Parser (IO ())
+subcommand defCddbOpt =
+    Opts.subparser
+    (  Opts.command "cddb" (Opts.info (runCddb <$> (Opts.helper <*> cddbOptions defCddbOpt)) Opts.idm)
+    <> Opts.command "gentags" (Opts.info (runGenTags <$> (Opts.helper <*> Opts.strArgument (Opts.metavar "CDDB.yml"))) Opts.idm)
+    )
 
-run :: Options -> [String] -> IO ()
-run Options{..} ("cddb":_) = do
-    toc <- readToc device
+runCddb :: CDDBOptions -> IO ()
+runCddb opt = do
+    toc <- readToc (device opt)
     withManager $ \mgr -> do
         entries <- liftIO $ freeDBQuery freeDBSetting toc mgr
         case entries of
@@ -85,12 +120,20 @@ run Options{..} ("cddb":_) = do
                 forM_ entries $ \(categ, discid, title) -> do
                     liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
 
-run _ ("gentags":file:_) = do
+  where
+    freeDBSetting = FreeDBSetting
+        { fdbUrl = freeDBUrl opt
+        , fdbUserName = freeDBUser opt
+        , fdbUserHostname = freeDBUserHostname opt
+        , fdbProxy = proxyUrl opt >>= parseProxy
+        }
+
+runGenTags :: FilePath -> IO ()
+runGenTags file = do
     mcddb <- Yaml.decodeFile file
     case mcddb of
         Just o -> genTags o
         Nothing -> return () -- error
-run _ _ = return () -- error
 
 genTags :: Value -> IO ()
 genTags o =
@@ -193,9 +236,5 @@ makeCDDB toc entries =
 
 main :: IO ()
 main = do
-    (opts, cmds) <- getArgs >>= compilerOpts usage options defaultOptions
-    run opts cmds
-  where
-    usage errs = do
-        pn <- getProgName
-        ioError $ userError $ concat errs ++ usageMessage pn options
+    cddbOpt <- defaultCDDBOptions
+    join $ Opts.execParser (Opts.info (subcommand cddbOpt) Opts.idm)

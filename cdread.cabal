@@ -43,6 +43,8 @@ executable cdread
       , http-conduit
       , lens
       , lens-aeson
+      , network-uri
+      , optparse-applicative
       , text
       , transformers
       , unordered-containers
