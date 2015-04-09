@@ -175,7 +175,7 @@ makeCDDB toc entries =
          , cddbTrack = map makeCDDBTrack [0..(trackNum-1)]
          }
   where
-    m = M.fromList entries
+    m = M.fromListWith (flip T.append) entries
     (album, albumArtist) = case M.lookup "DTITLE" m of
         Nothing -> ("", Nothing)
         Just dtitle -> parseTitleAuthor dtitle
