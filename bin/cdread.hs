@@ -8,6 +8,7 @@ import Control.Lens hiding ((.=))
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Aeson
+import Data.Aeson.Types (Pair)
 import Data.Aeson.Lens
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.HashMap.Lazy as HashMap
@@ -179,14 +180,16 @@ instance FromJSON CDDB where
     parseJSON o = fail $ "CDDB unexpected " ++ show o
 instance ToJSON CDDB where
     toJSON CDDB{..} =
-        object [ "ALBUM" .= cddbAlbum
-               , "ALBUM ARTIST" .= cddbAlbumArtist
-               , "DATE" .= cddbDate
-               , "GENRE" .= cddbGenre
-               , "DISCID" .= cddbDiscID
-               , "TRACKTOTAL" .= cddbTrackTotal
-               , "track" .= cddbTrack
-               ]
+        nonNullObject
+            [ "ALBUM" .= cddbAlbum
+            , "ALBUM ARTIST" .= cddbAlbumArtist
+            , "ARTIST" .= cddbAlbumArtist
+            , "DATE" .= cddbDate
+            , "GENRE" .= cddbGenre
+            , "DISCID" .= cddbDiscID
+            , "TRACKTOTAL" .= cddbTrackTotal
+            , "track" .= cddbTrack
+            ]
 
 data CDDBTrack = CDDBTrack
     { trackNumber :: Int
@@ -202,10 +205,14 @@ instance FromJSON CDDBTrack where
     parseJSON o = fail $ "CDDBTrack unexpected " ++ show o
 instance ToJSON CDDBTrack where
     toJSON CDDBTrack{..} =
-        object [ "TRACKNUMBER" .= trackNumber
-               , "TITLE" .= trackTitle
-               , "ARTIST" .= trackArtist
-               ]
+        nonNullObject
+            [ "TRACKNUMBER" .= trackNumber
+            , "TITLE" .= trackTitle
+            , "ARTIST" .= trackArtist
+            ]
+
+nonNullObject :: [Pair] -> Value
+nonNullObject = object . filter ((/= Null) . snd)
 
 makeCDDB :: Toc -> [(T.Text, T.Text)] -> CDDB
 makeCDDB toc entries =
