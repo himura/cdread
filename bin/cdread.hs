@@ -244,4 +244,4 @@ makeCDDB toc entries =
 main :: IO ()
 main = do
     cddbOpt <- defaultCDDBOptions
-    join $ Opts.execParser (Opts.info (subcommand cddbOpt) Opts.idm)
+    join $ Opts.execParser (Opts.info (Opts.helper <*> subcommand cddbOpt) Opts.idm)
