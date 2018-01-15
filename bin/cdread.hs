@@ -106,20 +106,17 @@ subcommand defCddbOpt =
 runCddb :: CDDBOptions -> IO ()
 runCddb opt = do
     toc <- readToc (device opt)
+    let query = obtainFreeDBQueryString toc
+    putStrLn $ "# FreeDB Query: " ++ query
     withManager $ \mgr -> do
         entries <- liftIO $ freeDBQuery freeDBSetting toc mgr
         case entries of
-            [(categ, discid, _title)] -> do
-                -- liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
-                cddbAssoc <- liftIO $ freeDBRead freeDBSetting categ discid mgr
-                let cddb = makeCDDB toc cddbAssoc
-                liftIO . S8.putStrLn $ Yaml.encode cddb
-                -- forM_ cddb $ \(k, v) ->
-                --     liftIO . T.putStrLn $ T.concat [k, " = ", v]
+            [(categ, discid, _title)] -> putEachEntries toc categ discid mgr
             _ -> do
                 liftIO $ putStrLn "Multiple Choices:"
                 forM_ entries $ \(categ, discid, title) -> do
                     liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
+                    putEachEntries toc categ discid mgr
 
   where
     freeDBSetting = FreeDBSetting
@@ -128,6 +125,14 @@ runCddb opt = do
         , fdbUserHostname = freeDBUserHostname opt
         , fdbProxy = proxyUrl opt >>= parseProxy
         }
+
+    putEachEntries toc categ discid mgr = do
+        -- liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
+        cddbAssoc <- liftIO $ freeDBRead freeDBSetting categ discid mgr
+        let cddb = makeCDDB toc cddbAssoc
+        liftIO . S8.putStrLn $ Yaml.encode cddb
+        -- forM_ cddb $ \(k, v) ->
+        --     liftIO . T.putStrLn $ T.concat [k, " = ", v]
 
 runGenTags :: FilePath -> IO ()
 runGenTags file = do
