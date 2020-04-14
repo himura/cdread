@@ -15,8 +15,8 @@ data Toc = Toc
     } deriving (Show, Eq)
 
 withCdromFd :: FilePath -> (Fd -> IO a) -> IO a
-withCdromFd dev inner =
-    bracket (openFd dev ReadOnly Nothing (defaultFileFlags { nonBlock = True })) closeFd inner
+withCdromFd dev =
+    bracket (openFd dev ReadOnly Nothing (defaultFileFlags { nonBlock = True })) closeFd
 
 readToc :: FilePath -> IO Toc
 readToc dev =

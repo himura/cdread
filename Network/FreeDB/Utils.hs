@@ -1,11 +1,10 @@
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards #-}
 
 module Network.FreeDB.Utils
        where
 
 import Control.Applicative
+import Control.Monad
 import Data.Attoparsec.Text as Atto
 import qualified Data.Text as T
 
@@ -22,4 +21,4 @@ titleAuthorParser = do
     return (title, author)
   where
     authorParser = Atto.manyTill Atto.anyChar (skipSpace1 *> Atto.satisfy (Atto.inClass "/-") <* skipSpace1)
-    skipSpace1 = Atto.takeWhile1 isHorizontalSpace >> return ()
+    skipSpace1 = void $ Atto.takeWhile1 isHorizontalSpace

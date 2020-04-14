@@ -6,13 +6,13 @@ module Network.FreeDB
        where
 
 import Control.Applicative
+import Control.Monad
 import Control.Monad.Catch
 import Data.Attoparsec.Text as Atto
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.ByteString.Lazy as L
 import Data.Char
-import Data.List
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.Typeable (Typeable)
@@ -58,7 +58,7 @@ freeDBRead setting categ discid mgr = do
 
 obtainFreeDBQueryString :: Toc -> String
 obtainFreeDBQueryString toc =
-    concat . intersperse " " $ (discid : len : addresses) ++ [show (tocLengthOfDiscInSec toc)]
+    unwords $ (discid : len : addresses) ++ [show (tocLengthOfDiscInSec toc)]
   where
     discid = printf "%x" $ tocDiscId toc
     len = show . length $ tocAddresses toc
@@ -68,7 +68,7 @@ makeFreeDBRequest :: FreeDBSetting
                   -> S.ByteString
                   -> IO Request
 makeFreeDBRequest FreeDBSetting{..} cmd = do
-    req <- parseUrl fdbUrl
+    req <- parseRequest fdbUrl
     return $ req { proxy = fdbProxy
                  , queryString = HT.renderSimpleQuery False query
                  }
@@ -111,7 +111,7 @@ freeDBQueryResponseParser = do
 
 
 skipSpace1 :: Parser ()
-skipSpace1 = Atto.takeWhile1 isSpace >> return ()
+skipSpace1 = void $ Atto.takeWhile1 isSpace
 
 makeFreeDBReadRequest :: FreeDBSetting
                       -> T.Text -- ^ caregory

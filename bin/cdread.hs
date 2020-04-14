@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -14,7 +15,6 @@ import qualified Data.ByteString.Char8 as S8
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as M
 import Data.Maybe
-import Data.Monoid
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Yaml as Yaml
@@ -135,15 +135,15 @@ runCddb opt = do
         --     liftIO . T.putStrLn $ T.concat [k, " = ", v]
 
 runGenTags :: FilePath -> IO ()
-runGenTags file = do
-    mcddb <- Yaml.decodeFile file
-    case mcddb of
-        Just o -> genTags o
-        Nothing -> return () -- error
+runGenTags file =
+    Yaml.decodeFileEither file >>= \case
+        Right o -> genTags o
+        Left err ->
+            putStrLn $ "Failed to decode tag file: " ++ file ++ ", error: " ++ show err
 
 genTags :: Value -> IO ()
 genTags o =
-    forM_ (o ^.. key "track" . _Array . traversed) $ \track -> do
+    forM_ (o ^.. key "track" . _Array . traversed) $ \track ->
         writeTagFile (track ^? key "TRACKNUMBER" . _Integral) track
   where
     commonField = o ^. _Object . to (HashMap.delete "track")
@@ -154,7 +154,7 @@ genTags o =
     writeTagFile (Just tracknum) track = do
         let fields = HashMap.union (track ^. _Object) commonField
         withFile (printf "%02d.tag" tracknum) WriteMode $ \fp ->
-            forM_ (HashMap.toList fields) $ \(k, vobj) -> do
+            forM_ (HashMap.toList fields) $ \(k, vobj) ->
                 case showValue vobj of
                     Just v -> T.hPutStrLn fp $ T.concat [k, "=", v]
                     Nothing -> T.hPutStrLn fp $ T.concat ["# unknown value: ", k, "=", T.pack . show $ vobj]
@@ -231,9 +231,8 @@ makeCDDB toc entries =
          }
   where
     m = M.fromListWith (flip T.append) entries
-    (album, albumArtist) = case M.lookup "DTITLE" m of
-        Nothing -> ("", Nothing)
-        Just dtitle -> parseTitleAuthor dtitle
+    parseTitleAuthorMaybe = maybe ("", Nothing) parseTitleAuthor
+    (album, albumArtist) = parseTitleAuthorMaybe $ M.lookup "DTITLE" m
     trackNum = length . tocAddresses $ toc
 
     makeCDDBTrack trackIndex =
@@ -242,9 +241,7 @@ makeCDDB toc entries =
                   , trackArtist = artist
                   }
       where
-        (title, artist) = case M.lookup (T.pack $ "TTITLE" ++ show trackIndex) m of
-            Nothing -> ("", Nothing)
-            Just ttitle -> parseTitleAuthor ttitle
+        (title, artist) = parseTitleAuthorMaybe $ M.lookup (T.pack $ "TTITLE" ++ show trackIndex) m
 
 main :: IO ()
 main = do
