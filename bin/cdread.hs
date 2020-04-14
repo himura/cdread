@@ -108,15 +108,15 @@ runCddb opt = do
     toc <- readToc (device opt)
     let query = obtainFreeDBQueryString toc
     putStrLn $ "# FreeDB Query: " ++ query
-    withManager $ \mgr -> do
-        entries <- liftIO $ freeDBQuery freeDBSetting toc mgr
-        case entries of
-            [(categ, discid, _title)] -> putEachEntries toc categ discid mgr
-            _ -> do
-                liftIO $ putStrLn "Multiple Choices:"
-                forM_ entries $ \(categ, discid, title) -> do
-                    liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
-                    putEachEntries toc categ discid mgr
+    mgr <- newManager tlsManagerSettings
+    entries <- liftIO $ freeDBQuery freeDBSetting toc mgr
+    case entries of
+        [(categ, discid, _title)] -> putEachEntries toc categ discid mgr
+        _ -> do
+            liftIO $ putStrLn "Multiple Choices:"
+            forM_ entries $ \(categ, discid, title) -> do
+                liftIO . T.putStrLn $ T.intercalate " " [categ, discid, title]
+                putEachEntries toc categ discid mgr
 
   where
     freeDBSetting = FreeDBSetting
