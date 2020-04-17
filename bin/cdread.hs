@@ -9,14 +9,15 @@ import Control.Lens hiding ((.=))
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Aeson
-import Data.Aeson.Types (Pair)
 import Data.Aeson.Lens
+import Data.Aeson.Types (Pair)
 import qualified Data.ByteString.Char8 as S8
 import qualified Data.HashMap.Lazy as HashMap
 import qualified Data.Map as M
 import Data.Maybe
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import qualified Data.Vector as Vector
 import Data.Yaml as Yaml
 import Network.FreeDB
 import Network.FreeDB.Utils
@@ -155,12 +156,20 @@ genTags o =
         let fields = HashMap.union (track ^. _Object) commonField
         withFile (printf "%02d.tag" tracknum) WriteMode $ \fp ->
             forM_ (HashMap.toList fields) $ \(k, vobj) ->
-                case showValue vobj of
-                    Just v -> T.hPutStrLn fp $ T.concat [k, "=", v]
+                case showValueList vobj of
+                    Just valueList ->
+                        forM_ valueList $ \v -> T.hPutStrLn fp $ T.concat [k, "=", v]
                     Nothing -> T.hPutStrLn fp $ T.concat ["# unknown value: ", k, "=", T.pack . show $ vobj]
+    showValueList :: Value -> Maybe [T.Text]
+    showValueList (Array arr) = traverse showValue $ Vector.toList arr
+    showValueList v = (:[]) <$> showValue v
+
     showValue :: Value -> Maybe T.Text
     showValue (String s) = Just s
     showValue v@(Number _i) = T.pack . show <$> (v ^? _Integral :: Maybe Int)
+    showValue (Object obj)
+        | [v] <- HashMap.elems obj
+        = showValue v
     showValue _ = Nothing
 
 data CDDB = CDDB
